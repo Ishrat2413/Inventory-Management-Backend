@@ -1,0 +1,355 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ======================
+// ENUMS
+// ======================
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum PayCalculationMode {
+  HOURLY
+  DAILY_PLUS_OVERTIME
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum StockMovementType {
+  PURCHASE
+  CONSUMPTION
+  ADJUSTMENT
+  WRITE_OFF
+  RETURN
+}
+
+enum ProductRequestType {
+  TASK_RELATED
+  GENERAL
+}
+
+enum ProductRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AttendanceSource {
+  FINGERPRINT
+  MANUAL
+}
+
+// ======================
+// MODELS
+// ======================
+
+model User {
+  id                    String    @id @default(uuid())
+  email                 String    @unique
+  password              String
+  role                  Role      @default(EMPLOYEE)
+  name                  String?
+  address               String?
+  phone                 String?
+  isActive              Boolean   @default(true)
+  fingerprintData       String?
+  fingerprintRegistered Boolean   @default(false)
+
+  // Single active refresh token (hashed). Rotated on every /auth/refresh call.
+  refreshTokenHash      String?
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  lastLogin             DateTime?
+
+  // Relations
+  employeeProfile       EmployeeProfile?
+  attendances           Attendance[]
+  attendanceOverrides   Attendance[]           @relation("AttendanceOverriddenBy")
+  taskAssignments       TaskAssignment[]
+  requestedProducts     ProductRequest[]       @relation("RequestedBy")
+  approvedRequests      ProductRequest[]       @relation("ApprovedBy")
+  stockMovements        StockMovement[]
+  createdTasks          Task[]                 @relation("CreatedBy")
+  completedTasks        Task[]                 @relation("CompletedBy")
+  monthlyReports        MonthlyReport[]
+  systemConfigUpdates   SystemConfig[]
+
+  @@index([role])
+  @@index([isActive])
+  @@map("users")
+}
+
+model EmployeeProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  hourlyRate         Decimal            @db.Decimal(12, 2)
+  dailyRate          Decimal?           @db.Decimal(12, 2)
+  payCalculationMode PayCalculationMode @default(HOURLY)
+  overtimeMultiplier Decimal            @default(1.5) @db.Decimal(4, 2)
+
+  lateGraceMinutes   Int                @default(10)
+  earlyLeavePenalty  Boolean            @default(true)
+  missingPunchRules  Json?
+  department         String?
+  joinDate           DateTime?
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@map("employee_profiles")
+}
+
+model Vendor {
+  id        String    @id @default(uuid())
+  name      String
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?
+  isActive  Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  products  Product[]
+
+  @@map("vendors")
+}
+
+model Product {
+  id                        String    @id @default(uuid())
+  sku                       String?   @unique
+  name                      String
+  description               String?
+  unitPrice                 Decimal   @db.Decimal(12, 2)
+  currency                  String    @default("MNT")
+  currentStock              Decimal   @default(0) @db.Decimal(14, 3)
+  lowStockThreshold         Decimal?  @db.Decimal(14, 3)
+  reorderTimeDays           Int?
+  quantityInReorder         Decimal?  @db.Decimal(14, 3)
+  isComposite                Boolean  @default(false)
+  isDiscontinued            Boolean   @default(false)
+
+  negativeSince              DateTime?
+  negativeStockAllowedUntil  DateTime?
+
+  vendorId                   String?
+  vendor                     Vendor?  @relation(fields: [vendorId], references: [id])
+
+  customFields                Json    @default("{}")
+
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  bomAsParent                  ProductBOM[]           @relation("ParentProduct")
+  bomAsChild                    ProductBOM[]          @relation("ChildProduct")
+  stockMovements                 StockMovement[]
+  taskRequiredProducts            TaskRequiredProduct[]
+  productRequests                  ProductRequest[]
+
+  @@index([currentStock])
+  @@index([isDiscontinued])
+  @@index([name])
+  @@map("products")
+}
+
+model ProductBOM {
+  id                String   @id @default(uuid())
+  parentProductId   String
+  childProductId    String
+  quantityRequired  Decimal  @db.Decimal(14, 4)
+
+  parentProduct     Product  @relation("ParentProduct", fields: [parentProductId], references: [id], onDelete: Cascade)
+  childProduct      Product  @relation("ChildProduct", fields: [childProductId], references: [id], onDelete: Restrict)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([parentProductId, childProductId])
+  @@map("product_boms")
+}
+
+model StockMovement {
+  id               String            @id @default(uuid())
+  productId        String
+  product          Product           @relation(fields: [productId], references: [id])
+
+  type             StockMovementType
+  quantity         Decimal           @db.Decimal(14, 3)
+  unitCost         Decimal           @db.Decimal(12, 4)
+  totalCost        Decimal           @db.Decimal(14, 2)
+
+  relatedTaskId    String?
+  relatedTask      Task?             @relation(fields: [relatedTaskId], references: [id])
+
+  relatedRequestId String?
+  relatedRequest   ProductRequest?   @relation(fields: [relatedRequestId], references: [id])
+
+  performedById    String?
+  performedBy      User?             @relation(fields: [performedById], references: [id])
+
+  notes            String?
+  createdAt        DateTime          @default(now())
+
+  @@index([productId, createdAt])
+  @@index([type])
+  @@index([relatedTaskId])
+  @@map("stock_movements")
+}
+
+model Task {
+  id               String     @id @default(uuid())
+  title            String
+  description      String?
+  status           TaskStatus @default(PENDING)
+
+  createdById      String
+  createdBy        User       @relation("CreatedBy", fields: [createdById], references: [id])
+
+  completedById    String?
+  completedBy      User?      @relation("CompletedBy", fields: [completedById], references: [id])
+  completedAt      DateTime?
+
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  assignments      TaskAssignment[]
+  requiredProducts TaskRequiredProduct[]
+  productRequests  ProductRequest[]
+  stockMovements   StockMovement[]
+
+  @@index([status])
+  @@map("tasks")
+}
+
+model TaskAssignment {
+  id         String   @id @default(uuid())
+  taskId     String
+  employeeId String
+  assignedAt DateTime @default(now())
+
+  task       Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  employee   User     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, employeeId])
+  @@map("task_assignments")
+}
+
+model TaskRequiredProduct {
+  id        String  @id @default(uuid())
+  taskId    String
+  productId String
+  quantity  Decimal @db.Decimal(14, 3)
+
+  task      Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@unique([taskId, productId])
+  @@map("task_required_products")
+}
+
+model ProductRequest {
+  id              String               @id @default(uuid())
+  productId       String
+  product         Product              @relation(fields: [productId], references: [id])
+
+  quantity        Decimal              @db.Decimal(14, 3)
+  type            ProductRequestType
+  status          ProductRequestStatus @default(PENDING)
+
+  taskId          String?
+  task            Task?                @relation(fields: [taskId], references: [id])
+
+  requestedById   String
+  requestedBy     User                 @relation("RequestedBy", fields: [requestedById], references: [id])
+
+  approvedById    String?
+  approvedBy      User?                @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  reason          String?
+  rejectionReason String?
+
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  stockMovements  StockMovement[]
+
+  @@index([status])
+  @@index([taskId])
+  @@map("product_requests")
+}
+
+model Attendance {
+  id               String           @id @default(uuid())
+  employeeId       String
+  employee         User             @relation(fields: [employeeId], references: [id])
+
+  date             DateTime         @db.Date
+  checkIn          DateTime?
+  checkOut         DateTime?
+
+  source           AttendanceSource @default(FINGERPRINT)
+  isOverride       Boolean          @default(false)
+  overriddenById   String?
+  overriddenBy     User?            @relation("AttendanceOverriddenBy", fields: [overriddenById], references: [id])
+
+  calculatedHours  Decimal?         @db.Decimal(6, 2)
+  lateMinutes      Int              @default(0)
+  earlyMinutes     Int              @default(0)
+
+  notes            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([date])
+  @@map("attendances")
+}
+
+model SystemConfig {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       Json
+  description String?
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+  updatedBy   User?    @relation(fields: [updatedById], references: [id])
+
+  @@map("system_configs")
+}
+
+model MonthlyReport {
+  id             String   @id @default(uuid())
+  year           Int
+  month          Int
+  totalPurchases Decimal  @db.Decimal(14, 2)
+  totalCogs      Decimal  @db.Decimal(14, 2)
+  inventoryValue Decimal  @db.Decimal(14, 2)
+  reportData     Json
+  generatedAt    DateTime @default(now())
+  generatedById  String?
+  generatedBy    User?    @relation(fields: [generatedById], references: [id])
+
+  @@unique([year, month])
+  @@map("monthly_reports")
+}
