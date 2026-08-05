@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "npx prisma generate && tsc",
+    "build": "npm install --include=dev && npx prisma generate && tsc",
     "dev": "ts-node src/app.ts",
     "start:dev": "nodemon src/app.ts",
     "start": "node dist/app.js",
