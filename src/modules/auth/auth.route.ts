@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { loginUser, refreshToken, logoutUser, changePassword, getMe, forgotPassword, resetPassword } from './auth.controller';
-import { validateLogin, validateRefresh, validateChangePassword, validateForgotPassword, validateResetPassword } from './auth.validation';
+import { loginUser, refreshToken, logoutUser, changePassword, getMe, forgotPassword, resetPassword, registerUser } from './auth.controller';
+import { validateLogin, validateRefresh, validateChangePassword, validateForgotPassword, validateResetPassword, validateRegister } from './auth.validation';
 import isAuthorized from '../../middlewares/is-authorized';
 
 const router = Router();
@@ -53,6 +53,13 @@ router.post('/forgot-password', validateForgotPassword, forgotPassword);
  * @access Public
  */
 router.post('/reset-password', validateResetPassword, resetPassword);
+
+/**
+ * @route POST /api/v1/auth/register
+ * @description Register a new user
+ * @access Public
+ */
+router.post('/register', validateRegister, registerUser);
 
 module.exports = router;
 

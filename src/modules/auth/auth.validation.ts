@@ -49,8 +49,19 @@ const zodResetPasswordSchema = z.object({
 
 export type ResetPasswordInput = z.infer<typeof zodResetPasswordSchema>;
 
+const zodRegisterSchema = z.object({
+  email: z.string({ message: 'Email is required' }).email({ message: 'Invalid email format' }),
+  password: z.string({ message: 'Password is required' }).min(6, { message: 'Password must be at least 6 characters' }),
+  name: z.string().optional(),
+  phone: z.string().optional(),
+  role: z.enum(['ADMIN', 'EMPLOYEE']).default('ADMIN'),
+}).strict();
+
+export type RegisterInput = z.infer<typeof zodRegisterSchema>;
+
 export const validateLogin = validateBody(zodLoginSchema);
 export const validateRefresh = validateBody(zodRefreshSchema);
 export const validateChangePassword = validateBody(zodChangePasswordSchema);
 export const validateForgotPassword = validateBody(zodForgotPasswordSchema);
 export const validateResetPassword = validateBody(zodResetPasswordSchema);
+export const validateRegister = validateBody(zodRegisterSchema);

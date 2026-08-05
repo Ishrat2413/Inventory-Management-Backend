@@ -143,6 +143,24 @@ export const templates = {
       <p style="${BODY_STYLE}">If you did not expect this email, please contact your administrator.</p>
     `),
 
+  welcomeSignup: ({ name, email, loginUrl }: { name: string; email: string; loginUrl?: string }) =>
+    wrap(`
+      <h1 style="${H1_STYLE}">Welcome to Dabang! 👋</h1>
+      <p style="${BODY_STYLE}">Hello <strong>${name || 'there'}</strong>,</p>
+      <p style="${BODY_STYLE}">
+        Thank you for signing up to the Dabang Inventory Management System. Your administrator account is now active.
+      </p>
+      <div style="${INFO_BOX_STYLE}">
+        <div style="${INFO_ROW_STYLE}">
+          <span style="${LABEL_STYLE}">Email address</span>
+          <span style="${VALUE_STYLE}">${email}</span>
+        </div>
+      </div>
+      <div style="text-align:center;">
+        <a href="${loginUrl || config.BASE_URL + '/login'}" style="${BUTTON_STYLE}">Go to Dashboard →</a>
+      </div>
+    `),
+
   forgotPassword: ({ name, resetUrl }: { name: string; resetUrl: string }) =>
     wrap(`
       <h1 style="${H1_STYLE}">Reset your password 🔐</h1>

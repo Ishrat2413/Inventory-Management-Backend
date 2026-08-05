@@ -5,7 +5,7 @@ import EncodeToken from '../../utils/jwt/encode-token';
 import EncodeRefreshToken from '../../utils/jwt/encode-refresh-token';
 import DecodeRefreshToken from '../../utils/jwt/decode-refresh-token';
 import ApiError from '../../utils/errors/api-error';
-import { LoginInput, ChangePasswordInput, ForgotPasswordInput, ResetPasswordInput } from './auth.validation';
+import { LoginInput, ChangePasswordInput, ForgotPasswordInput, ResetPasswordInput, RegisterInput } from './auth.validation';
 import SendEmail from '../../utils/email/send-email';
 import { templates } from '../../utils/email/templates';
 import jwt from 'jsonwebtoken';
@@ -135,6 +135,38 @@ const resetPassword = async (data: ResetPasswordInput) => {
   }
 };
 
+const registerUser = async (data: RegisterInput) => {
+  const existingUser = await prisma.user.findUnique({ where: { email: data.email } });
+  if (existingUser) throw ApiError.conflict('Email already exists', 'DUPLICATE_EMAIL');
+
+  const hashedPassword = await HashInfo(data.password);
+  const user = await prisma.user.create({
+    data: {
+      email: data.email,
+      password: hashedPassword,
+      name: data.name,
+      phone: data.phone,
+      role: data.role,
+      isActive: true,
+    },
+  });
+
+  const result = sanitize(user);
+
+  // Send welcome email (non-blocking)
+  SendEmail({
+    to: user.email,
+    subject: 'Welcome to Dabang Workspace!',
+    text: `Welcome to Dabang! Your administrator account under ${user.email} is active.`,
+    html: templates.welcomeSignup({
+      name: user.name || '',
+      email: user.email,
+    }),
+  }).catch(() => {});
+
+  return result;
+};
+
 export const authServices = {
   loginUser,
   refreshTokens,
@@ -143,4 +175,5 @@ export const authServices = {
   getCurrentUser,
   forgotPassword,
   resetPassword,
+  registerUser,
 };

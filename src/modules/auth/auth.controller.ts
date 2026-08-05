@@ -67,3 +67,8 @@ export const resetPassword = catchAsync(async (req: Request, res: Response) => {
   const result = await authServices.resetPassword(req.body);
   ServerResponse(res, true, 200, result.message);
 });
+
+export const registerUser = catchAsync(async (req: Request, res: Response) => {
+  const result = await authServices.registerUser(req.body);
+  ServerResponse(res, true, 201, 'User registered successfully', result);
+});
