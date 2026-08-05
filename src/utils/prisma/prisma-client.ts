@@ -5,19 +5,34 @@ const basePrisma = new PrismaClient();
 
 // Low-stock alert queue: debounce to avoid spamming emails
 let lowStockCheckTimeout: NodeJS.Timeout | null = null;
+const alertedProductIds = new Set<string>();
 
 async function checkAndAlertLowStock(client: PrismaClient) {
   try {
-    const lowStockProducts = await client.product.findMany({
+    const activeProducts = await client.product.findMany({
       where: {
         isDiscontinued: false,
         lowStockThreshold: { not: null },
-        currentStock: { lt: client.product.fields.lowStockThreshold as never },
       },
       select: { id: true, name: true, sku: true, currentStock: true, lowStockThreshold: true },
     });
 
-    if (lowStockProducts.length === 0) return;
+    const newlyAlerted: typeof activeProducts = [];
+
+    for (const p of activeProducts) {
+      const isLowStock = Number(p.currentStock) < Number(p.lowStockThreshold);
+      if (isLowStock) {
+        if (!alertedProductIds.has(p.id)) {
+          newlyAlerted.push(p);
+          alertedProductIds.add(p.id);
+        }
+      } else {
+        // Reset the alert state once the stock is replenished
+        alertedProductIds.delete(p.id);
+      }
+    }
+
+    if (newlyAlerted.length === 0) return;
 
     // Get all admin emails
     const admins = await client.user.findMany({
@@ -30,9 +45,9 @@ async function checkAndAlertLowStock(client: PrismaClient) {
     const { default: SendEmail } = await import('../email/send-email');
     const { templates } = await import('../email/templates');
 
-    const products = lowStockProducts.map((p) => ({
+    const products = newlyAlerted.map((p) => ({
       name: p.name,
-      sku: p.sku,
+      sku: p.sku || '',
       currentStock: Number(p.currentStock),
       lowStockThreshold: Number(p.lowStockThreshold),
     }));
