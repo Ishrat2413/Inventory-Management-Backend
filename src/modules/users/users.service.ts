@@ -55,7 +55,7 @@ const createUser = async (data: CreateUserInput): Promise<Partial<TSafeUser>> =>
   // Fire-and-forget welcome email (non-blocking)
   SendEmail({
     to: data.email,
-    subject: 'Welcome to Dabang — Your account is ready',
+    subject: 'Welcome — Your account is ready',
     text: `Welcome ${data.name || data.email}! Your account has been created. Email: ${data.email} | Password: ${data.password}`,
     html: templates.welcomeEmployee({
       name: data.name || '',
@@ -111,13 +111,26 @@ const updateUser = async (id: IdOrIdsInput['id'], data: UpdateUserInput): Promis
 };
 
 /**
- * Soft-delete / deactivate a user rather than physically removing the row,
- * preserving historical attendance/task/stock-movement relations.
+ * Hard-delete a user and physically remove the row from the database,
+ * along with all user-related data.
  */
 const deactivateUser = async (id: IdOrIdsInput['id']): Promise<Partial<TSafeUser | null>> => {
   if (!id) return null;
-  const updated = await prisma.user.update({ where: { id }, data: { isActive: false } });
-  return sanitize(updated);
+
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return null;
+
+  await prisma.$transaction([
+    prisma.taskAssignment.deleteMany({ where: { employeeId: id } }),
+    prisma.attendance.deleteMany({ where: { employeeId: id } }),
+    prisma.productRequest.deleteMany({ where: { OR: [{ requestedById: id }, { approvedById: id }] } }),
+    prisma.stockMovement.deleteMany({ where: { performedById: id } }),
+    prisma.task.deleteMany({ where: { OR: [{ createdById: id }, { completedById: id }] } }),
+    prisma.employeeProfile.deleteMany({ where: { userId: id } }),
+    prisma.user.delete({ where: { id } }),
+  ]);
+
+  return sanitize(user);
 };
 
 const getUserById = async (id: IdOrIdsInput['id']): Promise<Partial<TSafeUser | null>> => {
@@ -141,7 +154,9 @@ const getManyUser = async (
       ],
     }),
     ...(query.role && { role: query.role }),
-    ...(query.isActive !== undefined && { isActive: query.isActive }),
+    ...(query.isActive !== undefined && {
+      isActive: typeof query.isActive === 'string' ? query.isActive === 'true' : !!query.isActive,
+    }),
   };
 
   const [totalData, users] = await prisma.$transaction([

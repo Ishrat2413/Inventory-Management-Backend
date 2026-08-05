@@ -19,7 +19,7 @@ const SendEmail = async ({ to, text, subject, html }: EmailOptions): Promise<boo
     secure: false, // STARTTLS on port 587
     auth: {
       user: config.EMAIL_USER,
-      pass: config.EMAIL_PASSWORD,
+      pass: config.EMAIL_PASSWORD ? config.EMAIL_PASSWORD.replace(/\s+/g, '') : '',
     },
     tls: {
       rejectUnauthorized: false,
@@ -28,7 +28,7 @@ const SendEmail = async ({ to, text, subject, html }: EmailOptions): Promise<boo
 
   try {
     await transporter.sendMail({
-      from: `"Dabang System" <${config.EMAIL_FROM}>`,
+      from: `"Inventory System" <${config.EMAIL_FROM}>`,
       to,
       subject,
       text,

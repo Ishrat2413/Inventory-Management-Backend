@@ -1,5 +1,7 @@
 import config from '../../config/config';
 
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+
 const BASE_STYLE = `
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #f0f4ff;
@@ -95,11 +97,11 @@ const wrap = (content: string) => `
   <div style="${CARD_STYLE}">
     <div style="${HEADER_STYLE}">
       <div style="${LOGO_STYLE}">🏢</div>
-      <p style="font-size:13px;color:#6B7280;margin:0;">Dabang Inventory System</p>
+      <p style="font-size:13px;color:#6B7280;margin:0;">Inventory System</p>
     </div>
     ${content}
     <div style="${FOOTER_STYLE}">
-      <p>This email was sent by Dabang Inventory Management System.</p>
+      <p>This email was sent by Inventory Management System.</p>
       <p>Please do not reply to this email. If you have questions, contact your admin.</p>
     </div>
   </div>
@@ -120,10 +122,10 @@ export const templates = {
     loginUrl?: string;
   }) =>
     wrap(`
-      <h1 style="${H1_STYLE}">Welcome to Dabang! 👋</h1>
+      <h1 style="${H1_STYLE}">Welcome! 👋</h1>
       <p style="${BODY_STYLE}">Hello <strong>${name || 'there'}</strong>,</p>
       <p style="${BODY_STYLE}">
-        Your employee account has been created. You can now log in to the Dabang Inventory
+        Your employee account has been created. You can now log in to the Inventory
         Management System using the credentials below.
       </p>
       <div style="${INFO_BOX_STYLE}">
@@ -132,23 +134,23 @@ export const templates = {
           <span style="${VALUE_STYLE}">${email}</span>
         </div>
         <div style="${INFO_ROW_STYLE}">
-          <span style="${LABEL_STYLE}">Temporary password</span>
+          <span style="${LABEL_STYLE}">Temporary password: </span>
           <span style="${VALUE_STYLE}">${password}</span>
         </div>
       </div>
       <p style="${BODY_STYLE}">Please log in and change your password immediately.</p>
       <div style="text-align:center;">
-        <a href="${loginUrl || config.BASE_URL + '/login'}" style="${BUTTON_STYLE}">Log in now →</a>
+        <a href="${loginUrl || FRONTEND_URL + '/login'}" style="${BUTTON_STYLE}">Log in now →</a>
       </div>
       <p style="${BODY_STYLE}">If you did not expect this email, please contact your administrator.</p>
     `),
 
   welcomeSignup: ({ name, email, loginUrl }: { name: string; email: string; loginUrl?: string }) =>
     wrap(`
-      <h1 style="${H1_STYLE}">Welcome to Dabang! 👋</h1>
+      <h1 style="${H1_STYLE}">Welcome! 👋</h1>
       <p style="${BODY_STYLE}">Hello <strong>${name || 'there'}</strong>,</p>
       <p style="${BODY_STYLE}">
-        Thank you for signing up to the Dabang Inventory Management System. Your administrator account is now active.
+        Thank you for signing up to the Inventory Management System. Your employee account is now active.
       </p>
       <div style="${INFO_BOX_STYLE}">
         <div style="${INFO_ROW_STYLE}">
@@ -157,7 +159,7 @@ export const templates = {
         </div>
       </div>
       <div style="text-align:center;">
-        <a href="${loginUrl || config.BASE_URL + '/login'}" style="${BUTTON_STYLE}">Go to Dashboard →</a>
+        <a href="${loginUrl || FRONTEND_URL + '/login'}" style="${BUTTON_STYLE}">Go to Dashboard →</a>
       </div>
     `),
 

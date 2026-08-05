@@ -44,7 +44,7 @@ export const getUserById = catchAsync(async (req: AuthedRequest, res: Response) 
 
 /** GET /users — list all users with filters (Admin only) */
 export const getManyUser = catchAsync(async (req: Request, res: Response) => {
-  const query = req.query as unknown as UserSearchQueryInput;
+  const query = ((req as any).validatedQuery || req.query) as unknown as UserSearchQueryInput;
   const { users, totalData, totalPages } = await userServices.getManyUser(query);
   ServerResponse(res, true, 200, 'Users retrieved successfully', { users, totalData, totalPages });
 });

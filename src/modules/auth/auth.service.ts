@@ -91,14 +91,14 @@ const forgotPassword = async (data: ForgotPasswordInput) => {
   const user = await prisma.user.findUnique({ where: { email: data.email } });
   if (!user) throw ApiError.notFound('No user found with this email');
 
-  // Sign reset token (valid for 30 minutes)
   const token = jwt.sign({ id: user.id, purpose: 'reset-password' }, config.JWT_SECRET, { expiresIn: '30m' });
-  const resetUrl = `http://localhost:3000/reset-password?token=${token}`;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
 
   // Non-blocking fire-and-forget email sending
   SendEmail({
     to: user.email,
-    subject: 'Reset your Dabang Workspace Password',
+    subject: 'Reset your Workspace Password',
     text: `Reset your password by visiting: ${resetUrl}`,
     html: templates.forgotPassword({
       name: user.name || '',
@@ -146,7 +146,7 @@ const registerUser = async (data: RegisterInput) => {
       password: hashedPassword,
       name: data.name,
       phone: data.phone,
-      role: data.role,
+      role: 'EMPLOYEE',
       isActive: true,
     },
   });
@@ -156,8 +156,8 @@ const registerUser = async (data: RegisterInput) => {
   // Send welcome email (non-blocking)
   SendEmail({
     to: user.email,
-    subject: 'Welcome to Dabang Workspace!',
-    text: `Welcome to Dabang! Your administrator account under ${user.email} is active.`,
+    subject: 'Welcome to Workspace!',
+    text: `Welcome! Your employee account under ${user.email} is active.`,
     html: templates.welcomeSignup({
       name: user.name || '',
       email: user.email,
