@@ -1,7 +1,6 @@
 import nodemailer, { Transporter } from 'nodemailer';
 import config from '../../config/config';
 
-// Define the function's parameter types
 interface EmailOptions {
   to: string;
   text: string;
@@ -10,19 +9,14 @@ interface EmailOptions {
 }
 
 /**
- * Sends an email using nodemailer.
- *
- * @param to - The recipient's email address.
- * @param text - The plain text content of the email.
- * @param subject - The subject of the email.
- * @param html - The HTML content of the email.
- * @returns {Promise<boolean>} - A promise that resolves to true if the email is sent successfully, or false if an error occurs.
+ * Sends an email using Nodemailer with Gmail SMTP.
+ * Non-blocking — always resolves (never throws) so it doesn't slow API responses.
  */
 const SendEmail = async ({ to, text, subject, html }: EmailOptions): Promise<boolean> => {
   const transporter: Transporter = nodemailer.createTransport({
     host: config.EMAIL_HOST,
     port: config.EMAIL_PORT,
-    secure: false,
+    secure: false, // STARTTLS on port 587
     auth: {
       user: config.EMAIL_USER,
       pass: config.EMAIL_PASSWORD,
@@ -32,19 +26,17 @@ const SendEmail = async ({ to, text, subject, html }: EmailOptions): Promise<boo
     },
   });
 
-  const mailOptions = {
-    from: config.EMAIL_USER,
-    to,
-    subject,
-    text,
-    html,
-  };
-
   try {
-    await transporter.sendMail(mailOptions);
+    await transporter.sendMail({
+      from: `"Dabang System" <${config.EMAIL_FROM}>`,
+      to,
+      subject,
+      text,
+      html,
+    });
     return true;
   } catch (error) {
-    console.error('Failed to send email:', error);
+    console.error('[Email] Failed to send email to', to, ':', error);
     return false;
   }
 };

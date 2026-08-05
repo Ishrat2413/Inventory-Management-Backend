@@ -6,6 +6,8 @@ import ApiError from '../../utils/errors/api-error';
 import { buildPagination, totalPagesOf } from '../../helpers/pagination';
 import { computeEarnings, currentMonthRange } from './earnings.util';
 import { CreateUserInput, UpdateUserInput, UpdateMeInput, UserSearchQueryInput, EarningsQueryInput } from './users.validation';
+import SendEmail from '../../utils/email/send-email';
+import { templates } from '../../utils/email/templates';
 
 const sanitize = <T extends { password?: string; refreshTokenHash?: string | null }>(
   user: T,
@@ -48,7 +50,21 @@ const createUser = async (data: CreateUserInput): Promise<Partial<TSafeUser>> =>
     include: { employeeProfile: true },
   });
 
-  return sanitize(savedUser);
+  const result = sanitize(savedUser);
+
+  // Fire-and-forget welcome email (non-blocking)
+  SendEmail({
+    to: data.email,
+    subject: 'Welcome to Dabang — Your account is ready',
+    text: `Welcome ${data.name || data.email}! Your account has been created. Email: ${data.email} | Password: ${data.password}`,
+    html: templates.welcomeEmployee({
+      name: data.name || '',
+      email: data.email,
+      password: data.password,
+    }),
+  }).catch(() => {}); // Silently ignore email errors
+
+  return result;
 };
 
 /**

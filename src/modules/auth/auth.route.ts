@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { loginUser, refreshToken, logoutUser, changePassword, getMe } from './auth.controller';
-import { validateLogin, validateRefresh, validateChangePassword } from './auth.validation';
+import { loginUser, refreshToken, logoutUser, changePassword, getMe, forgotPassword, resetPassword } from './auth.controller';
+import { validateLogin, validateRefresh, validateChangePassword, validateForgotPassword, validateResetPassword } from './auth.validation';
 import isAuthorized from '../../middlewares/is-authorized';
 
 const router = Router();
@@ -40,4 +40,19 @@ router.post('/change-password', isAuthorized, validateChangePassword, changePass
  */
 router.get('/me', isAuthorized, getMe);
 
+/**
+ * @route POST /api/v1/auth/forgot-password
+ * @description Request a password reset link
+ * @access Public
+ */
+router.post('/forgot-password', validateForgotPassword, forgotPassword);
+
+/**
+ * @route POST /api/v1/auth/reset-password
+ * @description Reset password using signed reset token
+ * @access Public
+ */
+router.post('/reset-password', validateResetPassword, resetPassword);
+
 module.exports = router;
+

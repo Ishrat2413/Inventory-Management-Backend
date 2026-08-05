@@ -57,3 +57,13 @@ export const getMe = catchAsync(async (req: AuthedRequest, res: Response) => {
   const result = await authServices.getCurrentUser(req.user!.id);
   ServerResponse(res, true, 200, 'Current user retrieved successfully', result);
 });
+
+export const forgotPassword = catchAsync(async (req: Request, res: Response) => {
+  const result = await authServices.forgotPassword(req.body);
+  ServerResponse(res, true, 200, result.message);
+});
+
+export const resetPassword = catchAsync(async (req: Request, res: Response) => {
+  const result = await authServices.resetPassword(req.body);
+  ServerResponse(res, true, 200, result.message);
+});

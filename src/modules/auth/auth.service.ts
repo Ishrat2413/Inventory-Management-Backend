@@ -5,7 +5,11 @@ import EncodeToken from '../../utils/jwt/encode-token';
 import EncodeRefreshToken from '../../utils/jwt/encode-refresh-token';
 import DecodeRefreshToken from '../../utils/jwt/decode-refresh-token';
 import ApiError from '../../utils/errors/api-error';
-import { LoginInput, ChangePasswordInput } from './auth.validation';
+import { LoginInput, ChangePasswordInput, ForgotPasswordInput, ResetPasswordInput } from './auth.validation';
+import SendEmail from '../../utils/email/send-email';
+import { templates } from '../../utils/email/templates';
+import jwt from 'jsonwebtoken';
+import config from '../../config/config';
 
 const sanitize = <T extends { password?: string; refreshTokenHash?: string | null }>(user: T) => {
   const { password, refreshTokenHash, ...safe } = user;
@@ -83,10 +87,60 @@ const getCurrentUser = async (userId: string) => {
   return sanitize(user);
 };
 
+const forgotPassword = async (data: ForgotPasswordInput) => {
+  const user = await prisma.user.findUnique({ where: { email: data.email } });
+  if (!user) throw ApiError.notFound('No user found with this email');
+
+  // Sign reset token (valid for 30 minutes)
+  const token = jwt.sign({ id: user.id, purpose: 'reset-password' }, config.JWT_SECRET, { expiresIn: '30m' });
+  const resetUrl = `http://localhost:3000/reset-password?token=${token}`;
+
+  // Non-blocking fire-and-forget email sending
+  SendEmail({
+    to: user.email,
+    subject: 'Reset your Dabang Workspace Password',
+    text: `Reset your password by visiting: ${resetUrl}`,
+    html: templates.forgotPassword({
+      name: user.name || '',
+      resetUrl,
+    }),
+  }).catch(() => {});
+
+  return { message: 'Reset email sent successfully' };
+};
+
+const resetPassword = async (data: ResetPasswordInput) => {
+  try {
+    const decoded = jwt.verify(data.token, config.JWT_SECRET) as { id: string; purpose?: string };
+    if (!decoded || decoded.purpose !== 'reset-password') {
+      throw ApiError.badRequest('Invalid or expired reset token');
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    if (!user) throw ApiError.notFound('User not found');
+
+    const hashedPassword = await HashInfo(data.password);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        refreshTokenHash: null, // Invalidate all logins
+      },
+    });
+
+    return { message: 'Password has been reset successfully' };
+  } catch (err) {
+    throw ApiError.badRequest('Invalid or expired reset token');
+  }
+};
+
 export const authServices = {
   loginUser,
   refreshTokens,
   logoutUser,
   changePassword,
   getCurrentUser,
+  forgotPassword,
+  resetPassword,
 };
