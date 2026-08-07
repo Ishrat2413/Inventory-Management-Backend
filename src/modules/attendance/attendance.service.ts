@@ -14,7 +14,7 @@ import { CheckInInput, CheckOutInput, AttendanceSearchQueryInput, OverrideAttend
 const SHIFT_START_HOUR = 9;
 const SHIFT_END_HOUR = 18;
 
-const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+const startOfDay = (date: Date) => new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
 
 const checkIn = async (employeeId: string, data: CheckInInput) => {
   const timestamp = data.timestamp ?? new Date();
@@ -81,7 +81,7 @@ const getManyAttendance = async (query: AttendanceSearchQueryInput, requester: {
       where,
       skip,
       take,
-      include: { employee: { select: { id: true, name: true } } },
+      include: { employee: { select: { id: true, name: true, email: true } } },
       orderBy: { date: 'desc' },
     }),
   ]);
