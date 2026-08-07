@@ -17,9 +17,7 @@ import config from '../../config/config';
 const catchAsync = (fn: RequestHandler) => {
   return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch((err) => {
-      if (config.NODE_ENV !== 'production') {
-        console.error('Async error:', err);
-      }
+      console.error('Async error:', err);
 
       if (err instanceof ApiError) {
         return ServerResponse(res, false, err.statusCode, err.message, null, null, {
