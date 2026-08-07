@@ -198,18 +198,25 @@ async function main() {
     },
   });
 
-  // ── Attendance (today, already checked in) ──
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const checkInTime = new Date(today);
-  checkInTime.setHours(9, 5, 0, 0);
+  // ── Attendance (yesterday, completed) ──
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayUTC = new Date(Date.UTC(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()));
+
+  const checkInTime = new Date(yesterdayUTC);
+  checkInTime.setUTCHours(9, 5, 0, 0);
+
+  const checkOutTime = new Date(yesterdayUTC);
+  checkOutTime.setUTCHours(18, 0, 0, 0);
 
   await prisma.attendance.create({
     data: {
       employeeId: employee.id,
-      date: today,
+      date: yesterdayUTC,
       checkIn: checkInTime,
+      checkOut: checkOutTime,
       source: 'FINGERPRINT',
+      calculatedHours: 8.92,
       lateMinutes: 0,
     },
   });
