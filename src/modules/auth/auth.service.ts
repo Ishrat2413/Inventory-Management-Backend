@@ -31,13 +31,19 @@ const issueTokens = async (userId: string, email: string, role: string) => {
 };
 
 const loginUser = async (data: LoginInput) => {
+  console.log('[Login] Received request for email:', data.email);
   const user = await prisma.user.findUnique({ where: { email: data.email }, include: { employeeProfile: true } });
+  console.log('[Login] User lookup complete. User found:', !!user);
   if (!user || !user.isActive) throw ApiError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
 
+  console.log('[Login] Comparing password hashes...');
   const isPasswordMatch = await compareInfo(data.password, user.password);
+  console.log('[Login] Password match result:', isPasswordMatch);
   if (!isPasswordMatch) throw ApiError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
 
+  console.log('[Login] Issuing access and refresh tokens...');
   const { accessToken, refreshToken } = await issueTokens(user.id, user.email, user.role);
+  console.log('[Login] Tokens successfully issued.');
 
   return { user: sanitize(user), accessToken, refreshToken };
 };
