@@ -29,7 +29,7 @@ export type ConsumeInput = z.infer<typeof zodConsumeSchema>;
 const zodMovementSearchQuerySchema = z
   .object({
     productId: z.string().uuid().optional(),
-    type: z.enum(['PURCHASE', 'CONSUMPTION', 'ADJUSTMENT', 'WRITE_OFF', 'RETURN']).optional(),
+    type: z.enum(['PURCHASE', 'CONSUMPTION', 'ADJUSTMENT', 'WRITE_OFF', 'RETURN', 'ASSEMBLY']).optional(),
     taskId: z.string().uuid().optional(),
     from: z.string().optional(),
     to: z.string().optional(),
@@ -46,6 +46,17 @@ const zodMovementSearchQuerySchema = z
 
 export type MovementSearchQueryInput = z.infer<typeof zodMovementSearchQuerySchema>;
 
+const zodAssembleSchema = z
+  .object({
+    productId: z.string({ message: 'productId is required' }).uuid(),
+    quantity: z.number({ message: 'quantity is required' }).int().positive(),
+    notes: z.string().optional(),
+  })
+  .strict();
+
+export type AssembleInput = z.infer<typeof zodAssembleSchema>;
+
 export const validateCreateMovement = validateBody(zodCreateMovementSchema);
 export const validateConsume = validateBody(zodConsumeSchema);
+export const validateAssemble = validateBody(zodAssembleSchema);
 export const validateMovementSearchQuery = validateQuery(zodMovementSearchQuerySchema);

@@ -18,6 +18,11 @@ export const consumeProduct = catchAsync(async (req: AuthedRequest, res: Respons
   ServerResponse(res, true, 201, 'Product consumed successfully', result);
 });
 
+export const assembleProduct = catchAsync(async (req: AuthedRequest, res: Response) => {
+  const result = await stockMovementServices.assembleProduct(req.body, req.user?.id);
+  ServerResponse(res, true, 201, 'Compound product assembled successfully', result);
+});
+
 export const getManyMovement = catchAsync(async (req: Request, res: Response) => {
   const query = req.query as unknown as MovementSearchQueryInput;
   const { movements, totalData, totalPages } = await stockMovementServices.getManyMovement(query);

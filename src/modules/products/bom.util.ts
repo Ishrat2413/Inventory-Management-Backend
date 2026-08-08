@@ -108,3 +108,33 @@ export const explodeBOM = async (productId: string, quantity: number, depth = 0,
 
   return Array.from(merged.values());
 };
+
+/**
+ * Detects whether adding a set of child product IDs to a parent product
+ * would create a circular reference. Walks each child's BOM tree to see
+ * if the parentId appears anywhere downstream.
+ *
+ * Returns `true` if a cycle is detected.
+ */
+export const detectCircularBOM = async (parentId: string, childIds: string[], db: DbClient = prisma): Promise<boolean> => {
+  const visited = new Set<string>();
+
+  const walk = async (productId: string): Promise<boolean> => {
+    if (productId === parentId) return true;
+    if (visited.has(productId)) return false;
+    visited.add(productId);
+
+    const entries = await db.productBOM.findMany({ where: { parentProductId: productId } });
+    for (const entry of entries) {
+      if (await walk(entry.childProductId)) return true;
+    }
+    return false;
+  };
+
+  for (const childId of childIds) {
+    if (await walk(childId)) return true;
+    visited.clear(); // reset per top-level child
+  }
+
+  return false;
+};

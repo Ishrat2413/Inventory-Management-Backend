@@ -13,8 +13,17 @@ const zodCreateProductSchema = z
     reorderTimeDays: z.number().int().nonnegative().optional(),
     quantityInReorder: z.number().nonnegative().optional(),
     isComposite: z.boolean().optional(),
-    vendorId: z.string().uuid({ message: 'Invalid vendorId' }).optional(),
+    vendorId: z.string().uuid({ message: 'Invalid vendorId' }).optional().nullable(),
+    categoryId: z.string().uuid({ message: 'Invalid categoryId' }).optional().nullable(),
     customFields: z.record(z.string(), z.any()).optional(),
+    bomItems: z
+      .array(
+        z.object({
+          childProductId: z.string({ message: 'childProductId is required' }).uuid(),
+          quantityRequired: z.number({ message: 'quantityRequired is required' }).positive(),
+        }),
+      )
+      .optional(),
   })
   .strict();
 
