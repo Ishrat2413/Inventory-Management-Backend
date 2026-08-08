@@ -37,6 +37,7 @@ enum StockMovementType {
   ADJUSTMENT
   WRITE_OFF
   RETURN
+  ASSEMBLY
 }
 
 enum ProductRequestType {
