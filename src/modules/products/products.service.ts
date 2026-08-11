@@ -5,6 +5,7 @@ import { buildPagination, totalPagesOf } from '../../helpers/pagination';
 import { getBOMTree, detectCircularBOM } from './bom.util';
 import { CreateProductInput, UpdateProductInput, ProductSearchQueryInput, ReplaceBOMInput, CustomFieldInput } from './products.validation';
 import { getConfigValue } from '../config/config.service';
+import { storageProvider } from '../../utils/storage/storage.service';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 
@@ -133,7 +134,7 @@ const createProduct = async (data: CreateProductInput) => {
 };
 
 const updateProduct = async (id: string, data: UpdateProductInput) => {
-  const { bomItems, ...productData } = data;
+  const { bomItems, removeImage, ...productData } = data;
 
   const existing = await prisma.product.findUnique({
     where: { id },
@@ -319,11 +320,42 @@ const updateProduct = async (id: string, data: UpdateProductInput) => {
   });
 };
 
-/** Soft-delete: mark as discontinued rather than physically removing history-linked rows. */
+/** Hard-delete: physically remove the product and its dependent relations from the database. */
 const deleteProduct = async (id: string) => {
   const existing = await prisma.product.findUnique({ where: { id } });
   if (!existing) throw ApiError.notFound('Product not found');
-  return prisma.product.update({ where: { id }, data: { isDiscontinued: true } });
+
+  // Delete image from storage provider if exists
+  if (existing.imageStorageId) {
+    await storageProvider.deleteFile(existing.imageStorageId);
+  }
+
+  // Delete all dependencies and the product itself atomically in a transaction
+  return prisma.$transaction(async (tx) => {
+    // 1. Delete ProductBOM rows (parent or child relations)
+    await tx.productBOM.deleteMany({
+      where: {
+        OR: [
+          { parentProductId: id },
+          { childProductId: id }
+        ]
+      }
+    });
+
+    // 2. Delete StockMovement rows
+    await tx.stockMovement.deleteMany({ where: { productId: id } });
+
+    // 3. Delete TaskRequiredProduct rows
+    await tx.taskRequiredProduct.deleteMany({ where: { productId: id } });
+
+    // 4. Delete ProductRequest rows
+    await tx.productRequest.deleteMany({ where: { productId: id } });
+
+    // 5. Delete the Product itself
+    return tx.product.delete({ where: { id } });
+  }, {
+    timeout: 30000
+  });
 };
 
 /**

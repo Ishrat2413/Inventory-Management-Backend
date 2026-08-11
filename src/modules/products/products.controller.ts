@@ -3,15 +3,78 @@ import { productServices } from './products.service';
 import { ProductSearchQueryInput } from './products.validation';
 import ServerResponse from '../../helpers/responses/custom-response';
 import catchAsync from '../../utils/catch-async/catch-async';
+import { storageProvider } from '../../utils/storage/storage.service';
 
 export const createProduct = catchAsync(async (req: Request, res: Response) => {
-  const result = await productServices.createProduct(req.body);
-  ServerResponse(res, true, 201, 'Product created successfully', result);
+  let uploadRes: { imageUrl: string; imageStorageId: string } | null = null;
+  console.log("DEBUG CREATE - files:", req.files ? Object.keys(req.files) : "none", "body:", req.body);
+
+  try {
+    // Check if an image file was uploaded
+    if (req.files && req.files.image) {
+      uploadRes = await storageProvider.uploadFile(req.files.image);
+      req.body.imageUrl = uploadRes.imageUrl;
+      req.body.imageStorageId = uploadRes.imageStorageId;
+      console.log("DEBUG CREATE UPLOAD SUCCESS:", uploadRes);
+    }
+
+    const result = await productServices.createProduct(req.body);
+    ServerResponse(res, true, 201, 'Product created successfully', result);
+  } catch (error) {
+    console.error("DEBUG CREATE FAILED:", error);
+    // Clean up uploaded file if database creation fails
+    if (uploadRes) {
+      await storageProvider.deleteFile(uploadRes.imageStorageId);
+    }
+    throw error;
+  }
 });
 
 export const updateProduct = catchAsync(async (req: Request, res: Response) => {
-  const result = await productServices.updateProduct(req.params.id as string, req.body);
-  ServerResponse(res, true, 200, 'Product updated successfully', result);
+  const productId = req.params.id as string;
+  let uploadRes: { imageUrl: string; imageStorageId: string } | null = null;
+  let oldImageStorageIdToDelete: string | null = null;
+  console.log("DEBUG UPDATE - files:", req.files ? Object.keys(req.files) : "none", "body:", req.body);
+
+  try {
+    const existingProduct = await productServices.getProductById(productId);
+
+    if (req.files && req.files.image) {
+      // User uploaded a new image
+      uploadRes = await storageProvider.uploadFile(req.files.image);
+      req.body.imageUrl = uploadRes.imageUrl;
+      req.body.imageStorageId = uploadRes.imageStorageId;
+      console.log("DEBUG UPDATE UPLOAD SUCCESS:", uploadRes);
+      
+      // Mark old image for deletion
+      if (existingProduct.imageStorageId) {
+        oldImageStorageIdToDelete = existingProduct.imageStorageId;
+      }
+    } else if (req.body.removeImage === 'true') {
+      // User requested to remove the existing image
+      req.body.imageUrl = null;
+      req.body.imageStorageId = null;
+      if (existingProduct.imageStorageId) {
+        oldImageStorageIdToDelete = existingProduct.imageStorageId;
+      }
+    }
+
+    const result = await productServices.updateProduct(productId, req.body);
+
+    // Delete old image from storage now that the database update succeeded
+    if (oldImageStorageIdToDelete) {
+      await storageProvider.deleteFile(oldImageStorageIdToDelete);
+    }
+
+    ServerResponse(res, true, 200, 'Product updated successfully', result);
+  } catch (error) {
+    console.error("DEBUG UPDATE FAILED:", error);
+    // Clean up newly uploaded file if database update fails
+    if (uploadRes) {
+      await storageProvider.deleteFile(uploadRes.imageStorageId);
+    }
+    throw error;
+  }
 });
 
 export const deleteProduct = catchAsync(async (req: Request, res: Response) => {

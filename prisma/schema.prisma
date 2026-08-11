@@ -164,6 +164,9 @@ model Product {
   isComposite                Boolean  @default(false)
   isDiscontinued            Boolean   @default(false)
 
+  imageUrl                  String?
+  imageStorageId            String?
+
   negativeSince              DateTime?
   negativeStockAllowedUntil  DateTime?
 

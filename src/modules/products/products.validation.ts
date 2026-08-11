@@ -16,6 +16,8 @@ const zodCreateProductSchema = z
     vendorId: z.string().uuid({ message: 'Invalid vendorId' }).optional().nullable(),
     categoryId: z.string().uuid({ message: 'Invalid categoryId' }).optional().nullable(),
     customFields: z.record(z.string(), z.any()).optional(),
+    imageUrl: z.string().optional().nullable(),
+    imageStorageId: z.string().optional().nullable(),
     bomItems: z
       .array(
         z.object({
@@ -31,7 +33,10 @@ export type CreateProductInput = z.infer<typeof zodCreateProductSchema>;
 
 const zodUpdateProductSchema = zodCreateProductSchema
   .partial()
-  .extend({ isDiscontinued: z.boolean().optional() })
+  .extend({ 
+    isDiscontinued: z.boolean().optional(),
+    removeImage: z.string().optional()
+  })
   .strict();
 
 export type UpdateProductInput = z.infer<typeof zodUpdateProductSchema>;
