@@ -1,9 +1,51 @@
 import prisma from '../../utils/prisma/prisma-client';
 import ApiError from '../../utils/errors/api-error';
 import { buildPagination, totalPagesOf } from '../../helpers/pagination';
-import { explodeBOM } from '../products/bom.util';
+import { explodeBOM, getBOMTree } from '../products/bom.util';
 import { maybeFlagNegativeStock } from '../products/products.service';
 import { CreateTaskInput, UpdateTaskInput, AssignTaskInput, TaskSearchQueryInput } from './tasks.validation';
+
+const buildProductsSnapshot = async (requiredProducts: { productId: string; quantity: number }[], db = prisma) => {
+  const snapshot: any[] = [];
+  for (const item of requiredProducts) {
+    const product = await db.product.findUnique({ where: { id: item.productId } });
+    if (!product) continue;
+
+    const itemSnapshot: any = {
+      productId: product.id,
+      name: product.name,
+      sku: product.sku,
+      quantity: item.quantity,
+      unitPrice: Number(product.unitPrice),
+      currency: product.currency,
+      isComposite: product.isComposite,
+      bomComponents: []
+    };
+
+    if (product.isComposite) {
+      const bomTree = await getBOMTree(product.id, 0, db);
+      const flattenComponents = (node: any, multiplier: number) => {
+        const components: any[] = [];
+        for (const child of node.children) {
+          const totalQty = Number(child.quantityRequired) * multiplier;
+          components.push({
+            childProductId: child.productId,
+            name: child.name,
+            sku: child.sku,
+            quantityRequiredPerUnit: Number(child.quantityRequired),
+            totalQuantityRequired: totalQty,
+            unitPrice: Number(child.unitPrice ?? 0)
+          });
+        }
+        return components;
+      };
+      itemSnapshot.bomComponents = flattenComponents(bomTree, item.quantity);
+    }
+
+    snapshot.push(itemSnapshot);
+  }
+  return snapshot;
+};
 
 const taskInclude = {
   assignments: { include: { employee: { select: { id: true, name: true, email: true } } } },
@@ -13,14 +55,16 @@ const taskInclude = {
 };
 
 const createTask = async (data: CreateTaskInput, createdById: string) => {
+  const productsSnapshot = await buildProductsSnapshot(data.requiredProducts);
   return prisma.task.create({
     data: {
       title: data.title,
       description: data.description,
       createdById,
+      productsSnapshot,
       assignments: { createMany: { data: data.assignedEmployeeIds.map((employeeId) => ({ employeeId })) } },
       requiredProducts: { createMany: { data: data.requiredProducts.map((p) => ({ productId: p.productId, quantity: p.quantity })) } },
-    },
+    } as any,
     include: taskInclude,
   });
 };
@@ -30,7 +74,12 @@ const updateTask = async (id: string, data: UpdateTaskInput) => {
   if (!task) throw ApiError.notFound('Task not found');
   if (task.status === 'COMPLETED') throw ApiError.conflict('Completed tasks cannot be edited', 'TASK_ALREADY_COMPLETED');
 
-  return prisma.task.update({ where: { id }, data, include: taskInclude });
+  const updateData: any = { ...data };
+  if (data.status === 'IN_PROGRESS' && task.status !== 'IN_PROGRESS') {
+    updateData.startedAt = new Date();
+  }
+
+  return prisma.task.update({ where: { id }, data: updateData, include: taskInclude });
 };
 
 const getTaskById = async (id: string) => {
@@ -134,12 +183,23 @@ const completeTask = async (id: string, completedById: string) => {
       }
     }
 
+    // If task was never explicitly started, backfill startedAt to createdAt
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!(task as any).startedAt) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await tx.task.update({ where: { id }, data: { startedAt: task.createdAt } as any });
+    }
+
     return tx.task.update({
       where: { id },
-      data: { status: 'COMPLETED', completedById, completedAt: new Date() },
+      data: {
+        status: 'COMPLETED',
+        completedById,
+        completedAt: new Date(),
+      },
       include: taskInclude,
     });
-  });
+  }, { timeout: 30000 });
 };
 
 export const taskServices = { createTask, updateTask, getTaskById, getManyTask, assignEmployees, getTaskRequests, completeTask };

@@ -250,6 +250,9 @@ model Task {
   completedBy      User?      @relation("CompletedBy", fields: [completedById], references: [id])
   completedAt      DateTime?
 
+  startedAt        DateTime?
+  productsSnapshot  Json?
+
   createdAt        DateTime   @default(now())
   updatedAt        DateTime   @updatedAt
 
