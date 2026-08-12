@@ -26,7 +26,7 @@ const assertWithinNegativeStockLimit = async (productId: string, db: DbClient = 
  * Creates a manual stock movement (PURCHASE / ADJUSTMENT / WRITE_OFF / RETURN)
  * and applies its delta to the product's currentStock.
  */
-const createMovement = async (data: CreateMovementInput, performedById?: string) => {
+const createMovement = async (data: CreateMovementInput, performedById?: string, relatedRequestId?: string) => {
   return prisma.$transaction(async (tx) => {
     const product = await tx.product.findUnique({ where: { id: data.productId } });
     if (!product) throw ApiError.notFound('Product not found');
@@ -44,6 +44,7 @@ const createMovement = async (data: CreateMovementInput, performedById?: string)
         totalCost,
         notes: data.notes,
         performedById,
+        relatedRequestId,
       },
     });
     const updated = await tx.product.update({ where: { id: data.productId }, data: { currentStock: { increment: data.quantity } } });
@@ -135,7 +136,7 @@ const getMovementsForProduct = async (productId: string) => {
   });
 };
 
-const assembleProduct = async (data: AssembleInput, performedById?: string) => {
+const assembleProduct = async (data: AssembleInput, performedById?: string, relatedRequestId?: string) => {
   return prisma.$transaction(async (tx) => {
     // 1. Load parent product and its BOM components
     const product = await tx.product.findUnique({
@@ -190,6 +191,7 @@ const assembleProduct = async (data: AssembleInput, performedById?: string) => {
           quantity: -qtyRequired,
           unitCost,
           totalCost,
+          relatedRequestId,
           notes: `Assembled parent product: ${product.name} (Qty: ${data.quantity})`,
           performedById,
         },
@@ -214,6 +216,7 @@ const assembleProduct = async (data: AssembleInput, performedById?: string) => {
         quantity: data.quantity,
         unitCost: calculatedMaterialCost,
         totalCost: assemblyTotalCost,
+        relatedRequestId,
         notes: data.notes ?? `Assembled ${data.quantity} units manually`,
         performedById,
       },

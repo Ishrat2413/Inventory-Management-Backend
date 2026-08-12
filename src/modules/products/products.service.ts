@@ -433,18 +433,19 @@ const getManyProduct = async (query: ProductSearchQueryInput) => {
 
 /** GET /products/low-stock — products below threshold or currently negative. */
 const getLowStockProducts = async () => {
-  const products = await prisma.product.findMany({
-    where: {
-      isDiscontinued: false,
-      OR: [{ currentStock: { lt: 0 } }],
-    },
-    include: { vendor: { select: { id: true, name: true } } },
-  });
-
-  const all = await prisma.product.findMany({
-    where: { isDiscontinued: false, lowStockThreshold: { not: null } },
-    include: { vendor: { select: { id: true, name: true } } },
-  });
+  const [products, all] = await Promise.all([
+    prisma.product.findMany({
+      where: {
+        isDiscontinued: false,
+        OR: [{ currentStock: { lt: 0 } }],
+      },
+      include: { vendor: { select: { id: true, name: true } } },
+    }),
+    prisma.product.findMany({
+      where: { isDiscontinued: false, lowStockThreshold: { not: null } },
+      include: { vendor: { select: { id: true, name: true } } },
+    })
+  ]);
   const belowThreshold = all.filter((p) => Number(p.currentStock) <= Number(p.lowStockThreshold));
 
   const merged = new Map(products.map((p) => [p.id, p]));
