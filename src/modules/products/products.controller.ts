@@ -88,7 +88,7 @@ export const getProductById = catchAsync(async (req: Request, res: Response) => 
 });
 
 export const getManyProduct = catchAsync(async (req: Request, res: Response) => {
-  const query = req.query as unknown as ProductSearchQueryInput;
+  const query = ((req as any).validatedQuery || req.query) as unknown as ProductSearchQueryInput;
   const { products, totalData, totalPages } = await productServices.getManyProduct(query);
   ServerResponse(res, true, 200, 'Products retrieved successfully', { products, totalData, totalPages });
 });

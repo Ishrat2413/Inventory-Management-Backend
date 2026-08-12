@@ -33,3 +33,14 @@ export const issueRequest = catchAsync(async (req: AuthedRequest, res: Response)
   const result = await productRequestServices.issueRequest(req.params.id as string, req.user!.id);
   ServerResponse(res, true, 200, 'Request issued successfully', result);
 });
+
+export const getBOMPreview = catchAsync(async (req: AuthedRequest, res: Response) => {
+  const productId = req.query.productId as string;
+  const quantity = Number(req.query.quantity) || 1;
+  if (!productId) {
+    ServerResponse(res, false, 400, 'productId is required', null);
+    return;
+  }
+  const result = await productRequestServices.getBOMPreview(productId, quantity);
+  ServerResponse(res, true, 200, 'BOM preview retrieved successfully', result);
+});

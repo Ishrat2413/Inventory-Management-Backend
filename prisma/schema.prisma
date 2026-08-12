@@ -311,6 +311,7 @@ model ProductRequest {
 
   reason          String?
   rejectionReason String?
+  bomSnapshot     Json?
 
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt

@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "build": "npm install --include=dev && npx prisma generate && tsc",
-    "dev": "ts-node src/app.ts",
-    "start:dev": "nodemon src/app.ts",
+    "dev": "ts-node --transpile-only src/app.ts",
+    "start:dev": "nodemon --exec ts-node --transpile-only src/app.ts",
     "start": "node dist/app.js",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
