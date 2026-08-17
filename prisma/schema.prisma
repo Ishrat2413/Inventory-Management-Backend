@@ -92,6 +92,8 @@ model User {
   completedTasks        Task[]                 @relation("CompletedBy")
   monthlyReports        MonthlyReport[]
   systemConfigUpdates   SystemConfig[]
+  employeeRecords       EmployeeRecord[]
+  createdContentTypes   ContentType[]          @relation("ContentTypeCreatedBy")
 
   @@index([role])
   @@index([isActive])
@@ -397,4 +399,65 @@ model MonthlyReport {
 
   @@unique([year, month])
   @@map("monthly_reports")
+}
+
+// ======================
+// DYNAMIC CONTENT TYPES
+// ======================
+
+model ContentType {
+  id          String         @id @default(uuid())
+  name        String         @unique
+  description String?
+  isActive    Boolean        @default(true)
+
+  createdById String?
+  createdBy   User?          @relation("ContentTypeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  fields      ContentField[]
+  records     EmployeeRecord[]
+
+  @@map("content_types")
+}
+
+model ContentField {
+  id            String      @id @default(uuid())
+  contentTypeId String
+  contentType   ContentType @relation(fields: [contentTypeId], references: [id], onDelete: Cascade)
+
+  label         String
+  fieldType     String      // text | number | email | phone | date | dropdown | radio | checkbox | file | textarea
+  required      Boolean     @default(false)
+  order         Int         @default(0)
+  options       Json?       // for dropdown/radio: [{ label, value }]
+  placeholder   String?
+  helpText      String?
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([contentTypeId])
+  @@map("content_fields")
+}
+
+model EmployeeRecord {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  contentTypeId String
+  contentType   ContentType @relation(fields: [contentTypeId], references: [id], onDelete: Cascade)
+
+  data          Json        @default("{}")
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([userId, contentTypeId])
+  @@index([userId])
+  @@index([contentTypeId])
+  @@map("employee_records")
 }

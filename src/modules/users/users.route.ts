@@ -8,6 +8,8 @@ import {
   getMe,
   updateMe,
   getMyEarnings,
+  getEmployeePerformanceSummary,
+  downloadEmployeeReport,
 } from './users.controller';
 import { validateCreateUser, validateUpdateUser, validateUpdateMe, validateUserSearchQuery, validateEarningsQuery } from './users.validation';
 import { validateId } from '../../handlers/common-zod-validator';
@@ -75,5 +77,19 @@ router.patch('/:id', isAuthorized, checkRoles('ADMIN'), validateId, validateUpda
  * @access Private (Admin)
  */
 router.delete('/:id', isAuthorized, checkRoles('ADMIN'), validateId, deactivateUser);
+
+/**
+ * @route GET /api/v1/users/:id/performance
+ * @description Monthly performance summary: tasks, hours, earnings (query: year, month)
+ * @access Private (Admin or Self)
+ */
+router.get('/:id/performance', isAuthorized, validateId, getEmployeePerformanceSummary);
+
+/**
+ * @route GET /api/v1/users/:id/report
+ * @description Download PDF report (query: year, month — defaults to last month)
+ * @access Private (Admin or Self)
+ */
+router.get('/:id/report', isAuthorized, validateId, downloadEmployeeReport);
 
 module.exports = router;
