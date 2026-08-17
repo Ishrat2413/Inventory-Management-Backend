@@ -81,6 +81,7 @@ model User {
 
   // Relations
   employeeProfile       EmployeeProfile?
+  employeeDocuments     EmployeeDocument[]
   attendances           Attendance[]
   attendanceOverrides   Attendance[]           @relation("AttendanceOverriddenBy")
   taskAssignments       TaskAssignment[]
@@ -117,6 +118,26 @@ model EmployeeProfile {
   updatedAt          DateTime           @updatedAt
 
   @@map("employee_profiles")
+}
+
+model EmployeeDocument {
+  id              String    @id @default(uuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name            String
+  documentType    String    // e.g. "NID", "Passport", "Bank Info", "Certificate"
+  fileUrl         String
+  fileStorageId   String
+  expiryDate      DateTime?
+  isVerified      Boolean   @default(false)
+  notes           String?
+
+  uploadedAt      DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("employee_documents")
 }
 
 model Vendor {
