@@ -82,8 +82,21 @@ class CloudinaryStorageProvider implements IStorageProvider {
 
   async uploadFile(file: any): Promise<UploadResult> {
     return new Promise((resolve, reject) => {
+      // If it's explicitly an image, use image, otherwise use raw
+      const isImage = file.mimetype?.startsWith('image/');
+      const resourceType = isImage ? 'image' : 'raw';
+      
+      // We must pass the original filename as public_id so Cloudinary preserves the extension for raw files
+      const filenameBase = file.name ? file.name : `file_${Date.now()}`;
+
       const stream = cloudinary.uploader.upload_stream(
-        { folder: 'inventory_products' },
+        { 
+          folder: 'inventory_products', 
+          resource_type: resourceType,
+          use_filename: true,
+          unique_filename: true,
+          public_id: filenameBase
+        },
         (error, result) => {
           if (error) {
             return reject(new Error(`Cloudinary upload failed: ${error.message}`));
@@ -103,13 +116,21 @@ class CloudinaryStorageProvider implements IStorageProvider {
 
   async deleteFile(imageStorageId: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      cloudinary.uploader.destroy(imageStorageId, (error, result) => {
-        if (error) {
-          console.error(`Failed to delete Cloudinary asset ${imageStorageId}:`, error);
-          return reject(error);
+      const ext = path.extname(imageStorageId).toLowerCase();
+      const isRaw = !!ext && !['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext);
+      const resourceType = isRaw ? 'raw' : 'image';
+
+      cloudinary.uploader.destroy(
+        imageStorageId,
+        { resource_type: resourceType },
+        (error, result) => {
+          if (error) {
+            console.error(`Failed to delete Cloudinary asset ${imageStorageId}:`, error);
+            return reject(error);
+          }
+          resolve();
         }
-        resolve();
-      });
+      );
     });
   }
 }
