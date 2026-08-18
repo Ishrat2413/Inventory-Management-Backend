@@ -4,10 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "npm install --include=dev && npx prisma generate && tsc",
-    "dev": "ts-node --transpile-only src/app.ts",
+    "build": "node api.js && npm install --include=dev && npx prisma generate && tsc",
+    "dev": "node api.js && ts-node --transpile-only src/app.ts",
     "start:dev": "nodemon --exec ts-node --transpile-only src/app.ts",
-    "start": "node dist/app.js",
+    "start": "node api.js && node dist/app.js",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "prettier": "prettier --check 'src/**/*.{ts,tsx}'",
