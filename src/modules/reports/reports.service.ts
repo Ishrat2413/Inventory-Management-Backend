@@ -30,7 +30,7 @@ const getInventoryValue = async () => {
     byCategory[key] = (byCategory[key] ?? 0) + value;
   }
 
-  return { total: Number(total.toFixed(2)), byCategory, currency: 'MNT', productCount: products.length };
+  return { total: Number(total.toFixed(2)), byCategory, currency: 'BDT', productCount: products.length };
 };
 
 /**
@@ -53,7 +53,7 @@ const getMonthlyReport = async (query: MonthlyQueryInput) => {
     totalPurchases: purchases.totalCost,
     totalCogs: cogs.totalCost,
     inventoryValue: inventoryValue.total,
-    currency: 'MNT',
+    currency: 'BDT',
   };
 };
 
@@ -77,7 +77,7 @@ const getSpendingReport = async (query: DateRangeQueryInput) => {
     adjustments,
     writeOffs,
     returns,
-    currency: 'MNT',
+    currency: 'BDT',
   };
 };
 
@@ -112,7 +112,7 @@ const getCOGSReport = async (query: DateRangeQueryInput) => {
     to: to.toISOString().slice(0, 10),
     totalCogs: Number(byProduct.reduce((sum, p) => sum + p.cogs, 0).toFixed(2)),
     byProduct,
-    currency: 'MNT',
+    currency: 'BDT',
   };
 };
 
