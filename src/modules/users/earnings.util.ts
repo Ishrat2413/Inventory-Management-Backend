@@ -78,7 +78,7 @@ export const computeEarnings = async (
     overtimePay: Number(overtimePay.toFixed(2)),
     totalEstimatedPay: Number((regularPay + overtimePay).toFixed(2)),
     payCalculationMode: mode,
-    currency: 'MNT',
+    currency: 'BDT',
   };
 };
 
