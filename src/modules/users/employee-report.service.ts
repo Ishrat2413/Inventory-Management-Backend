@@ -3,12 +3,29 @@ import prisma from '../../utils/prisma/prisma-client';
 import { getEmployeePerformance } from './employee-performance.service';
 
 const BRAND_COLOR = '#6366f1'; // indigo
+const BRAND_DARK  = '#4338ca';
 const GRAY        = '#64748b';
 const LIGHT_GRAY  = '#f1f5f9';
 const DARK        = '#1e293b';
+const RULE_COLOR  = '#e2e8f0';
 
-const formatCurrency = (val: number) =>
-  `BDT ${val.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+const PAGE_MARGIN   = 50;
+const BOTTOM_MARGIN = 66; // reserved for the footer rule + text
+const CONTINUATION_HEADER_HEIGHT = 46;
+
+type PillKind = 'ok' | 'warn' | 'neutral';
+const PILL_COLORS: Record<PillKind, [string, string]> = {
+  ok:      ['#15803d', '#dcfce7'],
+  warn:    ['#b45309', '#fef3c7'],
+  neutral: ['#475569', '#e2e8f0'],
+};
+
+type RowEntry =
+  | { label: string; value: string }
+  | { label: string; pill: { text: string; kind: PillKind } };
+
+const formatCurrency = (val: number, currency = 'BDT') =>
+  `${currency} ${val.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 
 const formatDate = (d?: Date | string | null) =>
   d ? new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—';
@@ -18,47 +35,7 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-// ── Helper: draw a labelled row ─────────────────────────────────────────────
-const row = (
-  doc: InstanceType<typeof PDFDocument>,
-  label: string,
-  value: string,
-  y: number,
-  pageWidth: number,
-) => {
-  doc.fontSize(9).fillColor(GRAY).text(label, 50, y, { width: 180 });
-  doc.fontSize(9).fillColor(DARK).text(value, 230, y, { width: pageWidth - 280 });
-};
-
-// ── Helper: section header ───────────────────────────────────────────────────
-const sectionHeader = (
-  doc: InstanceType<typeof PDFDocument>,
-  title: string,
-  pageWidth: number,
-) => {
-  doc.moveDown(0.5);
-  const y = doc.y;
-  doc.rect(50, y, pageWidth - 100, 22).fill(BRAND_COLOR);
-  doc.fillColor('#ffffff').fontSize(10).font('Helvetica-Bold').text(title, 58, y + 6);
-  doc.moveDown(0.3).font('Helvetica');
-};
-
-// ── Helper: draw a grid of rows ─────────────────────────────────────────────
-const drawRows = (
-  doc: InstanceType<typeof PDFDocument>,
-  rows: [string, string][],
-  pageWidth: number,
-) => {
-  let y = doc.y;
-  rows.forEach(([label, value], i) => {
-    if (i % 2 === 0) doc.rect(50, y, pageWidth - 100, 20).fill(LIGHT_GRAY);
-    row(doc, label, value, y + 5, pageWidth);
-    y += 20;
-  });
-  doc.y = y + 8;
-};
-
-// ── Previous month helper ────────────────────────────────────────────────────
+/** Previous calendar month, handling the January → December-of-prior-year wrap. */
 export const previousMonth = (now = new Date()) => {
   const m = now.getUTCMonth(); // 0-indexed
   const y = now.getUTCFullYear();
@@ -77,15 +54,17 @@ export const generateEmployeeReportPdf = async (
     include: {
       employeeProfile: true,
       employeeDocuments: {
-        where: { isVerified: true },
         orderBy: { uploadedAt: 'desc' },
-        take: 10,
+        take: 50,
       },
     },
   });
   if (!user) throw new Error('User not found');
 
-  // Fetch all employee records (dynamic content types — e.g. bank info)
+  // All dynamic content-type records (e.g. Bank Info, Emergency Contact) —
+  // this endpoint is already ownership/role-gated upstream (self or ADMIN
+  // only, enforced in users.controller.ts), so it's safe to include every
+  // record the employee has on file.
   const employeeRecords = await prisma.employeeRecord.findMany({
     where: { userId },
     include: {
@@ -97,165 +76,285 @@ export const generateEmployeeReportPdf = async (
   });
 
   const performance = await getEmployeePerformance(userId, year, month);
+  const currency = performance.earnings.currency || 'BDT';
 
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 50 });
+    // Bottom margin is kept small on purpose: the footer is drawn near the
+    // physical bottom edge (see the footer loop below), and pdfkit refuses
+    // to place text below `page.height - margins.bottom` — it silently
+    // starts a new page instead. Content pagination is governed entirely by
+    // our own BOTTOM_MARGIN/ensureSpace logic, not by this value.
+    const doc = new PDFDocument({
+      size: 'A4',
+      margins: { top: PAGE_MARGIN, left: PAGE_MARGIN, right: PAGE_MARGIN, bottom: 20 },
+      bufferPages: true,
+    });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
     const pageWidth = doc.page.width;
+    const employeeName = user.name ?? user.email;
+    const periodLabel = `${MONTH_NAMES[month]} ${year}`;
+    let currentSectionTitle = '';
 
-    // ── Header Banner ─────────────────────────────────────────────────────
-    doc.rect(0, 0, pageWidth, 80).fill(BRAND_COLOR);
+    // ── Slim continuation header, drawn automatically on every page after
+    // the first (the first page already has its own full banner below, and
+    // pdfkit's constructor creates page 1 before this listener is attached,
+    // so this only ever fires for page 2 onward). ──────────────────────────
+    doc.on('pageAdded', () => {
+      doc.rect(0, 0, pageWidth, CONTINUATION_HEADER_HEIGHT).fill(BRAND_COLOR);
+      doc
+        .fillColor('#ffffff')
+        .font('Helvetica-Bold')
+        .fontSize(10)
+        .text(`Employee Report  ·  ${employeeName}  ·  ${periodLabel}`, PAGE_MARGIN, 16, {
+          width: pageWidth - PAGE_MARGIN * 2,
+          lineBreak: false,
+        });
+      doc.x = PAGE_MARGIN;
+      doc.y = CONTINUATION_HEADER_HEIGHT + 18;
+      doc.font('Helvetica').fillColor(DARK);
+    });
+
+    // ── Layout helpers ──────────────────────────────────────────────────────
+    const ensureSpace = (needed: number) => {
+      const limit = doc.page.height - BOTTOM_MARGIN;
+      if (doc.y + needed > limit) {
+        doc.addPage(); // synchronously triggers the 'pageAdded' handler above
+        if (currentSectionTitle) {
+          doc
+            .fontSize(8)
+            .fillColor(GRAY)
+            .font('Helvetica-Oblique')
+            .text(`${currentSectionTitle} (continued)`, PAGE_MARGIN, doc.y, {
+              width: pageWidth - PAGE_MARGIN * 2,
+              lineBreak: false,
+            });
+          doc.x = PAGE_MARGIN;
+          doc.moveDown(0.6).font('Helvetica').fillColor(DARK);
+        }
+      }
+    };
+
+    const sectionHeader = (title: string) => {
+      ensureSpace(50);
+      currentSectionTitle = title;
+      doc.moveDown(0.5);
+      const y = doc.y;
+      doc.rect(PAGE_MARGIN, y, pageWidth - PAGE_MARGIN * 2, 22).fill(BRAND_COLOR);
+      doc
+        .fillColor('#ffffff')
+        .fontSize(10)
+        .font('Helvetica-Bold')
+        .text(title, PAGE_MARGIN + 8, y + 6, { width: pageWidth - PAGE_MARGIN * 2 - 16, lineBreak: false });
+      doc.x = PAGE_MARGIN;
+      doc.y = y + 22;
+      doc.moveDown(0.3).font('Helvetica').fillColor(DARK);
+    };
+
+    const drawPill = (text: string, rightX: number, y: number, kind: PillKind) => {
+      doc.font('Helvetica-Bold').fontSize(8);
+      const w = doc.widthOfString(text) + 14;
+      const x = rightX - w;
+      const [fg, bg] = PILL_COLORS[kind];
+      doc.roundedRect(x, y, w, 15, 7.5).fill(bg);
+      doc.fillColor(fg).text(text, x, y + 3.5, { width: w, align: 'center', lineBreak: false });
+      doc.font('Helvetica').fillColor(DARK);
+      return w;
+    };
+
+    const drawEntries = (entries: RowEntry[]) => {
+      entries.forEach((entry, i) => {
+        ensureSpace(22);
+        const y = doc.y;
+        if (i % 2 === 0) doc.rect(PAGE_MARGIN, y, pageWidth - PAGE_MARGIN * 2, 20).fill(LIGHT_GRAY);
+        doc.fontSize(9).fillColor(GRAY).font('Helvetica').text(entry.label, PAGE_MARGIN + 8, y + 5, { width: 200 });
+        if ('pill' in entry) {
+          drawPill(entry.pill.text, pageWidth - PAGE_MARGIN - 8, y + 3, entry.pill.kind);
+        } else {
+          doc.fontSize(9).fillColor(DARK).text(entry.value, 230, y + 5, { width: pageWidth - 280 });
+        }
+        doc.y = y + 20;
+      });
+      doc.y += 8;
+    };
+
+    // ── Cover banner (page 1 only) ───────────────────────────────────────
+    doc.rect(0, 0, pageWidth, 90).fill(BRAND_COLOR);
+    doc.rect(0, 86, pageWidth, 4).fill(BRAND_DARK);
+    const bannerWidth = pageWidth - PAGE_MARGIN * 2;
     doc
       .fillColor('#ffffff')
       .fontSize(22)
       .font('Helvetica-Bold')
-      .text('Employee Report', 50, 24);
+      .text('Employee Report', PAGE_MARGIN, 22, { width: bannerWidth, lineBreak: false });
     doc
-      .fontSize(10)
+      .fontSize(11)
       .font('Helvetica')
+      .text(employeeName, PAGE_MARGIN, 50, { width: bannerWidth, lineBreak: false });
+    doc
+      .fontSize(9)
+      .fillColor('#e0e7ff')
       .text(
-        `${MONTH_NAMES[month]} ${year}  ·  Generated ${new Date().toLocaleDateString('en-US', { dateStyle: 'long' })}`,
-        50,
-        54,
+        `${periodLabel}  ·  Generated ${new Date().toLocaleDateString('en-US', { dateStyle: 'long' })}`,
+        PAGE_MARGIN,
+        68,
+        { width: bannerWidth, lineBreak: false },
       );
+    drawPill(user.isActive ? 'Active' : 'Inactive', pageWidth - PAGE_MARGIN, 24, user.isActive ? 'ok' : 'neutral');
 
-    doc.moveDown(2);
+    doc.x = PAGE_MARGIN;
+    doc.y = 110;
+    doc.fillColor(DARK).font('Helvetica');
 
-    // ── Employee Information ──────────────────────────────────────────────
-    sectionHeader(doc, 'Employee Information', pageWidth);
-    doc.moveDown(0.4);
+    // ── Personal Information ─────────────────────────────────────────────
+    sectionHeader('Personal Information');
+    drawEntries([
+      { label: 'Full Name',   value: user.name ?? '—' },
+      { label: 'Employee ID', value: user.id.slice(0, 8).toUpperCase() },
+      { label: 'Role',        value: user.role.charAt(0) + user.role.slice(1).toLowerCase() },
+      { label: 'Employment Status', pill: { text: user.isActive ? 'Active' : 'Inactive', kind: user.isActive ? 'ok' : 'neutral' } },
+    ]);
 
+    // ── Contact Information ──────────────────────────────────────────────
+    sectionHeader('Contact Information');
+    drawEntries([
+      { label: 'Email',   value: user.email },
+      { label: 'Phone',   value: user.phone ?? '—' },
+      { label: 'Address', value: user.address ?? '—' },
+    ]);
+
+    // ── Employment Information ───────────────────────────────────────────
     const profile = user.employeeProfile;
-    drawRows(doc, [
-      ['Full Name',   user.name ?? '—'],
-      ['Employee ID', user.id.slice(0, 8).toUpperCase()],
-      ['Email',       user.email],
-      ['Phone',       user.phone ?? '—'],
-      ['Address',     user.address ?? '—'],
-      ['Department',  profile?.department ?? '—'],
-      ['Join Date',   formatDate(profile?.joinDate)],
-    ], pageWidth);
+    sectionHeader('Employment Information');
+    drawEntries([
+      { label: 'Department',      value: profile?.department ?? '—' },
+      { label: 'Join Date',       value: formatDate(profile?.joinDate) },
+      { label: 'Pay Mode',        value: profile?.payCalculationMode.replace('_', ' + ') ?? '—' },
+      { label: 'Hourly Rate',     value: profile ? `${formatCurrency(Number(profile.hourlyRate), currency)}/hr` : '—' },
+      { label: 'Daily Rate',      value: profile?.dailyRate ? `${formatCurrency(Number(profile.dailyRate), currency)}/day` : '—' },
+      { label: 'Overtime Multiplier', value: profile ? `${profile.overtimeMultiplier}×` : '—' },
+    ]);
 
-    // ── Employment & Pay Information ─────────────────────────────────────
-    sectionHeader(doc, 'Employment & Pay Information', pageWidth);
-    doc.moveDown(0.4);
-
-    drawRows(doc, [
-      ['Pay Mode',       profile?.payCalculationMode ?? '—'],
-      ['Hourly Rate',    profile ? formatCurrency(Number(profile.hourlyRate)) + '/hr' : '—'],
-      ['Daily Rate',     profile?.dailyRate ? formatCurrency(Number(profile.dailyRate)) + '/day' : '—'],
-      ['OT Multiplier',  profile ? `${profile.overtimeMultiplier}×` : '—'],
-    ], pageWidth);
-
-    // ── Dynamic Records (Bank Info, Emergency Contact, etc.) ─────────────
+    // ── Dynamic / Custom Information (Bank Info, Emergency Contact, etc.) ─
     for (const record of employeeRecords) {
       const data = record.data as Record<string, unknown>;
       const hasData = Object.values(data).some((v) => v != null && v !== '');
       if (!hasData) continue;
 
-      sectionHeader(doc, record.contentType.name, pageWidth);
-      doc.moveDown(0.4);
+      sectionHeader(record.contentType.name);
 
-      const recordRows: [string, string][] = record.contentType.fields
+      const recordEntries: RowEntry[] = record.contentType.fields
         .map((field: { id: string; label: string; fieldType: string }) => {
           const val = data[field.id];
           if (val == null || val === '') return null;
-          const display = field.fieldType === 'checkbox' ? (val ? 'Yes' : 'No') : String(val);
-          return [field.label, display] as [string, string];
+          const value = field.fieldType === 'checkbox' ? (val ? 'Yes' : 'No') : String(val);
+          return { label: field.label, value } as RowEntry;
         })
-        .filter((r: [string, string] | null): r is [string, string] => r !== null);
+        .filter((r: RowEntry | null): r is RowEntry => r !== null);
 
-      if (recordRows.length) drawRows(doc, recordRows, pageWidth);
+      if (recordEntries.length) drawEntries(recordEntries);
     }
 
-    // ── Performance Summary ───────────────────────────────────────────────
-    sectionHeader(doc, `Monthly Performance — ${MONTH_NAMES[month]} ${year}`, pageWidth);
-    doc.moveDown(0.4);
+    // ── Documents on File ────────────────────────────────────────────────
+    if (user.employeeDocuments.length > 0) {
+      sectionHeader('Documents on File');
+      drawEntries(
+        user.employeeDocuments.map((d) => ({
+          label: `${d.documentType} — ${d.name}${d.expiryDate ? ` (expires ${formatDate(d.expiryDate)})` : ''}`,
+          pill: { text: d.isVerified ? 'Verified' : 'Pending', kind: (d.isVerified ? 'ok' : 'warn') as PillKind },
+        })),
+      );
+    }
 
+    // ── Monthly Performance ──────────────────────────────────────────────
     const t = performance.tasks;
     const a = performance.attendance;
     const e = performance.earnings;
 
-    drawRows(doc, [
-      ['Tasks Assigned',       String(t.assigned)],
-      ['Tasks Completed',      String(t.completed)],
-      ['Tasks In Progress',    String(t.inProgress)],
-      ['Tasks Pending',        String(t.pending)],
-      ['Tasks Cancelled',      String(t.cancelled)],
-      ['Completion Rate',      `${t.completionRate}%`],
-      ['Days Worked',          String(a.daysWorked)],
-      ['Total Hours',          `${a.totalHours} hrs`],
-      ['Regular Hours',        `${a.regularHours} hrs`],
-      ['Overtime Hours',       `${a.overtimeHours} hrs`],
-    ], pageWidth);
+    sectionHeader(`Monthly Performance — ${periodLabel}`);
+    drawEntries([
+      { label: 'Tasks Assigned',    value: String(t.assigned) },
+      { label: 'Tasks Completed',   value: String(t.completed) },
+      { label: 'Tasks In Progress', value: String(t.inProgress) },
+      { label: 'Tasks Pending',     value: String(t.pending) },
+      { label: 'Tasks Cancelled',   value: String(t.cancelled) },
+      { label: 'Completion Rate',   value: `${t.completionRate}%` },
+      { label: 'Days Worked',       value: String(a.daysWorked) },
+      { label: 'Total Hours',       value: `${a.totalHours} hrs` },
+      { label: 'Regular Hours',     value: `${a.regularHours} hrs` },
+      { label: 'Overtime Hours',    value: `${a.overtimeHours} hrs` },
+    ]);
 
-    // ── Earnings Summary ─────────────────────────────────────────────────
-    sectionHeader(doc, 'Earnings Summary', pageWidth);
-    doc.moveDown(0.4);
+    // ── Task Completion Timeline ──────────────────────────────────────────
+    if (t.completedTaskDates.length > 0) {
+      sectionHeader('Task Completion Timeline');
+      const grouped: Record<string, number> = {};
+      for (const d of t.completedTaskDates) grouped[d] = (grouped[d] ?? 0) + 1;
+      const timelineEntries: RowEntry[] = Object.entries(grouped)
+        .sort(([a2], [b2]) => a2.localeCompare(b2))
+        .map(([date, count]) => ({ label: formatDate(date), value: `${count} task${count > 1 ? 's' : ''} completed` }));
+      drawEntries(timelineEntries);
+    }
 
-    drawRows(doc, [
-      ['Hourly Rate',            formatCurrency(e.hourlyRate) + '/hr'],
-      ['Daily Rate',             formatCurrency(e.dailyRate) + '/day'],
-      ['Est. Daily Income',      formatCurrency(e.estimatedDailyIncome)],
-      ['Regular Pay',            formatCurrency(e.regularPay)],
-      ['Overtime Pay',           formatCurrency(e.overtimePay)],
-    ], pageWidth);
+    // ── Income Summary ────────────────────────────────────────────────────
+    sectionHeader('Income Summary');
+    drawEntries([
+      { label: 'Hourly Rate',       value: `${formatCurrency(e.hourlyRate, currency)}/hr` },
+      { label: 'Daily Rate',        value: `${formatCurrency(e.dailyRate, currency)}/day` },
+      { label: 'Est. Daily Income', value: formatCurrency(e.estimatedDailyIncome, currency) },
+      { label: 'Regular Pay',       value: formatCurrency(e.regularPay, currency) },
+      { label: 'Overtime Pay',      value: formatCurrency(e.overtimePay, currency) },
+    ]);
 
-    // Total box
+    ensureSpace(34);
     const totalY = doc.y;
+    const totalBoxWidth = pageWidth - PAGE_MARGIN * 2;
+    doc.rect(PAGE_MARGIN, totalY, totalBoxWidth, 30).fill(BRAND_COLOR);
     doc
-      .rect(50, totalY, pageWidth - 100, 30)
-      .fill(BRAND_COLOR)
       .fillColor('#ffffff')
       .fontSize(11)
       .font('Helvetica-Bold')
-      .text('Total Estimated Pay', 58, totalY + 9, { continued: true, width: 200 })
-      .text(formatCurrency(e.totalEstimatedPay), { align: 'right', width: pageWidth - 160 });
-    doc.moveDown(1.5).font('Helvetica');
-
-    // ── Verified Documents ───────────────────────────────────────────────
-    if (user.employeeDocuments.length > 0) {
-      sectionHeader(doc, 'Verified Documents', pageWidth);
-      doc.moveDown(0.4);
-
-      const docRows: [string, string][] = user.employeeDocuments.map((d) => [
-        d.documentType,
-        `${d.name}  (uploaded ${formatDate(d.uploadedAt)})`,
-      ]);
-      drawRows(doc, docRows, pageWidth);
-    }
-
-    // ── Completed Task Dates ─────────────────────────────────────────────
-    if (t.completedTaskDates.length > 0) {
-      sectionHeader(doc, 'Task Completion Timeline', pageWidth);
-      doc.moveDown(0.4);
-
-      // Group by date
-      const grouped: Record<string, number> = {};
-      for (const d of t.completedTaskDates) {
-        grouped[d] = (grouped[d] ?? 0) + 1;
-      }
-      const timelineRows: [string, string][] = Object.entries(grouped)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, count]) => [formatDate(date), `${count} task${count > 1 ? 's' : ''} completed`]);
-
-      drawRows(doc, timelineRows, pageWidth);
-    }
-
-    // ── Footer ───────────────────────────────────────────────────────────
+      .text('Total Estimated Pay', PAGE_MARGIN + 8, totalY + 9, { width: 220, lineBreak: false });
     doc
-      .fillColor(GRAY)
-      .fontSize(8)
-      .text(
-        `This report is system-generated and confidential. © ${new Date().getFullYear()} Dabang Inventory System`,
-        50,
-        doc.page.height - 40,
-        { align: 'center', width: pageWidth - 100 },
-      );
+      .fontSize(11)
+      .font('Helvetica-Bold')
+      .text(formatCurrency(e.totalEstimatedPay, currency), PAGE_MARGIN + 8, totalY + 9, {
+        width: totalBoxWidth - 16,
+        align: 'right',
+        lineBreak: false,
+      });
+    doc.x = PAGE_MARGIN;
+    doc.y = totalY + 30 + 12;
+    doc.font('Helvetica').fillColor(DARK);
+
+    // ── Footer (page number + confidentiality notice) on every page ──────
+    const range = doc.bufferedPageRange();
+    for (let i = range.start; i < range.start + range.count; i++) {
+      doc.switchToPage(i);
+      const bottomY = doc.page.height - 40;
+      doc
+        .moveTo(PAGE_MARGIN, bottomY - 10)
+        .lineTo(pageWidth - PAGE_MARGIN, bottomY - 10)
+        .lineWidth(0.5)
+        .strokeColor(RULE_COLOR)
+        .stroke();
+      doc
+        .fillColor(GRAY)
+        .fontSize(7.5)
+        .font('Helvetica')
+        .text('CONFIDENTIAL — For internal HR use only', PAGE_MARGIN, bottomY, { width: 220 })
+        .text(`Inventory Management © ${new Date().getFullYear()}`, PAGE_MARGIN, bottomY, {
+          width: pageWidth - PAGE_MARGIN * 2,
+          align: 'center',
+        })
+        .text(`Page ${i - range.start + 1} of ${range.count}`, PAGE_MARGIN, bottomY, {
+          width: pageWidth - PAGE_MARGIN * 2,
+          align: 'right',
+        });
+    }
 
     doc.end();
   });
